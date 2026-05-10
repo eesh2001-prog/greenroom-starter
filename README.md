@@ -69,6 +69,8 @@ Go to **[http://localhost:3000](http://localhost:3000)**.
 
 You'll land on Mariana's home view at The Crescent. **Click "Where to start" in the sidebar** for an in-product orientation.
 
+> **Tip:** Press **⌘K** (Mac) or **Ctrl+K** (Windows/Linux) anywhere in the app to open the command palette — search across shows and artists instantly.
+
 ---
 
 ## What's running
@@ -77,7 +79,7 @@ You're logged in automatically as **Mariana Reyes**, lead booker at The Crescent
 
 | Route | What it is |
 |---|---|
-| `/shows` | Mariana's home view. Upcoming shows + 24 months of past shows (collapsed). |
+| `/shows` | Mariana's home view. 24 months of completed shows, searchable and grouped by month. |
 | `/shows/[id]` | Show detail. Deal terms, artist info, ticket sales, expenses, comps. |
 | `/shows/[id]/settle` | The in-app settlement worksheet. **Try it on a few shows.** |
 | `/artists` | Roster of artists who've played the venue, bucketed by frequency. |
@@ -90,7 +92,7 @@ You're logged in automatically as **Mariana Reyes**, lead booker at The Crescent
 2. Then `/shows`. Pick a Vs-deal show. Click **Settle**. See what's broken.
 3. Pick a Flat-deal show. Click **Settle**. See what works.
 4. Read `data/transcripts/*.md` and `data/ceo-memo.md`.
-5. Look at `data/dispute-thread.md`. Find the matching show in the product (search for "Coastal Spell").
+5. Look at `data/dispute-thread.md`. Then press **⌘K** and search "Coastal Spell" to find the matching show.
 
 ---
 
@@ -100,14 +102,14 @@ Twenty-four months of synthetic operational data, designed to feel like a real v
 
 | Table | Approx rows | What it represents |
 |---|---|---|
-| `shows` | ~540 | 24 months of past shows + ~30 upcoming |
+| `shows` | ~540 | 24 months of shows. The app displays only past shows (more appear as days pass). |
 | `artists` | 59 | Mix of recurring (A-tier, 4+ shows) and one-off (D-tier) acts |
 | `agents` | 14 | Across WME, CAA, Wasserman, Paradigm, and independents |
 | `deals` | ~540 | One per show. Mix is flat ~33%, vs ~33%, % of net ~24%, door ~5%, % of gross ~4% |
-| `ticket_sales` | hundreds | Per-show, with realistic sell-through distributions |
+| `ticket_sales` | ~540 | One summary row per show, with realistic sell-through distributions |
 | `comps` | ~1,900 | Comp tickets across 6 categories |
-| `expenses` | ~2,800 | Sound, lights, hospitality, marketing, production, backline |
-| `settlements` | ~500 | Past settlements at various lifecycle stages |
+| `expenses` | ~2,900 | Sound, lights, hospitality, marketing, production, backline |
+| `settlements` | ~540 | All shows have settlement data. Past shows display it; future shows hold it until their date arrives. |
 
 A few things worth knowing:
 
@@ -152,20 +154,23 @@ These aren't decorative. They contain signals the database deliberately doesn't 
 ```
 app/
   context/                  # Candidate orientation page
-  shows/                    # Show calendar
-  shows/[id]/               # Show detail
-  shows/[id]/settle/        # The settlement worksheet
-  artists/                  # Artist roster
-  reports/                  # Aggregate metrics
+  shows/                    # Show list with search + month grouping
+  shows/[id]/               # Show detail (concert poster-style header)
+  shows/[id]/settle/        # The settlement worksheet (hero number layout)
+  artists/                  # Artist roster (card grid with genre dots)
+  reports/                  # Aggregate metrics + craft gap analysis
   icon.svg                  # Brand favicon
   opengraph-image.tsx       # Social share image
 components/
-  brand/logo.tsx            # The Greenroom logomark / wordmark
+  brand/logo.tsx            # The Greenroom frequency-mark logomark / wordmark
+  command-palette/          # ⌘K global search (shows + artists)
   ui/                       # Buttons, badges, cards
-  layout/sidebar.tsx
+  layout/
+    sidebar.tsx             # Fixed sidebar with active nav state
+    nav-links.tsx           # Client component for pathname-aware nav
 lib/
   dealMath.ts               # The settlement engine (deliberately incomplete)
-  queries.ts                # Server-side data fetching
+  queries.ts                # Server-side data fetching (past shows only)
   format.ts                 # Money + date helpers
 db/
   schema.ts                 # All tables, commented
@@ -181,7 +186,8 @@ data/                       # Markdown context + greenroom.db
 - **Next.js 16** (App Router) + **React 19** + **TypeScript**
 - **Tailwind CSS 4** with shadcn-style component primitives
 - **Drizzle ORM** + **libsql** (pure-JS SQLite — no native compile, no setup)
-- **Geist** (self-hosted via the `geist` package)
+- **Fraunces** (variable serif, via `next/font/google`) for display headings
+- **Geist Sans / Mono** (self-hosted via the `geist` package) for body + code
 - **lucide-react** for icons, **date-fns** for dates
 
 Everything is deliberately conventional. Use Cursor, Claude Code, or any other AI tool to navigate and modify the codebase — we expect you to.

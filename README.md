@@ -48,17 +48,31 @@ npm install
 
 This pulls down all the JavaScript packages the project needs. Takes about 60 seconds. You may see a few warnings — those are normal and safe to ignore.
 
-### 3.5 Set your Anthropic API key (for the Deal Modeler)
+### 4. Add your Anthropic API key
 
-The Deal Modeler's email-intake step calls Claude to extract structured deal terms from a pasted email. Create a `.env.local` file in the project root:
+**This step is required to use the Deal Modeler.** The Deal Modeler calls Claude to extract structured deal terms from a pasted email — without a key, hitting "Extract deal" on `/shows` will fail with an error.
 
-```bash
-ANTHROPIC_API_KEY=sk-ant-...
+Create a file called **`.env.local`** in the project root (next to `package.json`):
+
+```
+ANTHROPIC_API_KEY=sk-ant-api03-...
 ```
 
-Get a key at [console.anthropic.com](https://console.anthropic.com/). The rest of the app runs fine without it — only the "Extract deal" button on `/shows` and the per-show Modeler tab require it.
+**Where to get a key:**
+1. Go to [console.anthropic.com](https://console.anthropic.com/) and sign in (or create a free account).
+2. Navigate to **API Keys** in the left sidebar.
+3. Click **Create Key**, give it a name, and copy the value — it starts with `sk-ant-`.
+4. Paste it into `.env.local` as shown above.
 
-### 4. Start the app
+**Important:** `.env.local` is listed in `.gitignore` and will never be committed to GitHub. Do not paste your key anywhere else in the codebase.
+
+After creating the file, start (or restart) the dev server — Next.js only reads `.env.local` at startup.
+
+The rest of the app (shows list, settlement, reports, artists) runs without the key. Only these two surfaces require it:
+- The **"Extract deal"** button on `/shows`
+- The **Model** tab on any show detail page (`/shows/[id]/model`)
+
+### 5. Start the app
 
 ```bash
 npm run dev
@@ -73,7 +87,7 @@ You'll see something like:
 ✓ Ready in 1.2s
 ```
 
-### 5. Open it in your browser
+### 6. Open it in your browser
 
 Go to **[http://localhost:3000](http://localhost:3000)**.
 
@@ -267,6 +281,15 @@ npm run db:studio
 ```
 
 Opens [Drizzle Studio](https://orm.drizzle.team/drizzle-studio/overview) at `local.drizzle.studio` — a visual table browser. You can also open `data/greenroom.db` with any SQLite client (e.g. [TablePlus](https://tableplus.com/), [DBeaver](https://dbeaver.io/), or `sqlite3` CLI).
+
+### "Extraction failed: ANTHROPIC_API_KEY is not set"
+
+You haven't created `.env.local`, or you created it after starting the dev server. Two things to check:
+
+1. The file is named exactly **`.env.local`** (leading dot, no extension) and lives in the project root alongside `package.json`.
+2. **Restart the dev server.** Next.js reads environment files only at startup — adding the file while the server is running has no effect. Stop with `Ctrl+C` and run `npm run dev` again.
+
+The key must start with `sk-ant-`. If you see a 401 error instead, the key is invalid or has been revoked — generate a new one at [console.anthropic.com](https://console.anthropic.com/).
 
 ### Anything else
 

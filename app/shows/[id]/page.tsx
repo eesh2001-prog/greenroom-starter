@@ -483,6 +483,7 @@ function BonusBadge({ type }: { type: Bonus["type"] }) {
     sellout: "sellout",
     attendance_threshold: "attend",
     tier_ratchet: "ratchet",
+    walkout_pot: "walkout",
   };
   return (
     <span className="inline-flex shrink-0 items-center px-1.5 py-px rounded text-[9px] font-mono uppercase tracking-wider bg-white ring-1 ring-brand-200/50 text-brand-800">

@@ -7,6 +7,7 @@ import {
 } from "@/lib/format";
 import { ShowsList } from "./shows-list";
 import type { ShowRow } from "./shows-list";
+import { IntakeCard } from "./intake-card";
 
 export default async function ShowsPage() {
   const rows = await getAllShows();
@@ -69,7 +70,7 @@ export default async function ShowsPage() {
           Shows
         </h1>
         <p className="text-[14px] text-ink-500 mt-3 max-w-lg leading-relaxed">
-          Mariana&apos;s home view. {reversed.length} shows over 24 months.{" "}
+          Mariana&apos;s home view. {reversed.length} shows total.{" "}
           {settledCount} settled
           {disputedCount > 0 && (
             <>, <span className="text-rose-700">{disputedCount} disputed</span></>
@@ -87,6 +88,8 @@ export default async function ShowsPage() {
           mono
         />
       </div>
+
+      <IntakeCard />
 
       <ShowsList rows={serialized} />
     </div>

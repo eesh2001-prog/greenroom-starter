@@ -36,6 +36,9 @@ import {
   settlements,
   type Bonus,
   type Recoup,
+  type RecoupDeclaration,
+  type AmbiguityFlag,
+  type ExtractionMeta,
   type SettlementStage,
 } from "./schema";
 
@@ -1336,6 +1339,101 @@ async function main() {
       "[Mariana, March 19] Settlement disputed by Daniel Hwang at WME re: marketing recoup interpretation. Marcus signed off on additional $720 to make it go away. See dispute-thread for full email chain. Going forward — get marketing recoup language explicit in the deal email.",
     createdAt: coastalShowDate,
   });
+  // The Coastal Spell deal email is the canonical Modeler demo — it contains
+  // the exact phrase that caused the March 2025 dispute. The ambiguity flag
+  // is RESOLVED here (post-hoc audit), because the show already happened and
+  // the dispute was settled. The Modeler retroactively documents which
+  // reading was chosen and at what cost.
+  const coastalSourceEmail = [
+    "From: Daniel Hwang <dhwang@wme.com>",
+    "To: Mariana Reyes <mariana@thecrescentnashville.com>",
+    "Date: Tue, Jan 14, 2025, 4:42 PM",
+    "Subject: Coastal Spell — The Crescent, March 14",
+    "",
+    "Mariana,",
+    "",
+    "Confirming Coastal Spell for March 14 at The Crescent. Deal:",
+    "",
+    "$5,000 vs 80% of net after expenses, whichever is greater.",
+    "Expense cap: $2,500. Hospitality cap $500 (inside expenses).",
+    "Marketing recoup of $900 against gross, recoupable against the $2,500 cap.",
+    "Bonus: +$1,000 if gross exceeds $25,000.",
+    "",
+    "Show's already in the routing. Settlement night-of preferred but next morning is fine.",
+    "",
+    "Daniel",
+  ].join("\n");
+
+  const coastalRecoupDeclarations: RecoupDeclaration[] = [
+    {
+      id: "rec_coastal_spell_marketing",
+      category: "marketing",
+      label: "Spotify pre-show ad spend",
+      capAmount: 900,
+      deductionBasis: "gross",
+      // Resolved to WME's reading after the dispute. See ambiguity flag below.
+      deductionOrder: "inside_expense_cap",
+    },
+  ];
+
+  const coastalAmbiguityFlags: AmbiguityFlag[] = [
+    {
+      id: "amb_coastal_spell_marketing_cap",
+      sourceClause:
+        "Marketing recoup of $900 against gross, recoupable against the $2,500 cap.",
+      affectedFields: ["recoupDeclarations[0].deductionOrder"],
+      readings: [
+        {
+          label: "Inside the $2,500 expense cap",
+          description:
+            "The $900 marketing recoup counts toward the $2,500 expense cap — total deductions can't exceed $2,500. Artist-favorable: at $19,840 gross with $1,600 other expenses, artist gets $12,285.",
+          configDelta: {
+            "recoupDeclarations[0].deductionOrder": "inside_expense_cap",
+          },
+        },
+        {
+          label: "Outside the $2,500 expense cap",
+          description:
+            "The $900 marketing recoup is deducted on top of the $2,500 expense cap. Total deductions can reach $3,400. Venue-favorable: artist gets $11,565 — a $720 swing.",
+          configDelta: {
+            "recoupDeclarations[0].deductionOrder": "outside_expense_cap",
+          },
+        },
+      ],
+      status: "resolved",
+      resolvedReading: "Inside the $2,500 expense cap",
+      resolutionNote:
+        "Agreed to WME's reading after escalation. Marcus authorized the $720 difference. Logging this as a precedent for future marketing-recoup language.",
+      resolvedBy: MARCUS_ID,
+      resolvedAt: new Date("2025-03-18T14:00:00").getTime(),
+    },
+  ];
+
+  const coastalExtractionMeta: ExtractionMeta = {
+    dealType: { confidence: 0.98, sourceSpan: "$5,000 vs 80% of net" },
+    guaranteeAmount: { confidence: 0.99, sourceSpan: "$5,000 vs" },
+    percentage: { confidence: 0.99, sourceSpan: "80% of net" },
+    percentageBasis: { confidence: 0.94, sourceSpan: "80% of net after expenses" },
+    expenseCap: { confidence: 0.99, sourceSpan: "Expense cap: $2,500." },
+    hospitalityCap: {
+      confidence: 0.92,
+      sourceSpan: "Hospitality cap $500 (inside expenses).",
+    },
+    "bonuses[0]": {
+      confidence: 0.97,
+      sourceSpan: "+$1,000 if gross exceeds $25,000.",
+    },
+    "recoupDeclarations[0].capAmount": {
+      confidence: 0.99,
+      sourceSpan: "Marketing recoup of $900",
+    },
+    "recoupDeclarations[0].deductionOrder": {
+      confidence: 0.45,
+      sourceSpan:
+        "Marketing recoup of $900 against gross, recoupable against the $2,500 cap.",
+    },
+  };
+
   dealsToInsert.push({
     id: `deal_${coastalShowId}`,
     showId: coastalShowId,
@@ -1356,6 +1454,14 @@ async function main() {
     ] as Bonus[]),
     dealNotesFreetext:
       "$5,000 vs 80% of net after expenses, whichever greater. Expenses capped $2,500. Hospitality cap $500. +$1,000 bonus over $25k gross. Marketing recoup of $900 against gross. (Note added 3/19/25: this deal email was ambiguous — recoup interpretation disputed by WME, resolved with $720 concession.)",
+    sourceEmailText: coastalSourceEmail,
+    modelStatus: "confirmed",
+    shareToken: "tok_coastal_spell_demo",
+    agentConfirmedAt: new Date("2025-03-18T14:30:00"),
+    venueConfirmedAt: new Date("2025-03-18T14:00:00"),
+    recoupDeclarationsJson: JSON.stringify(coastalRecoupDeclarations),
+    ambiguityFlagsJson: JSON.stringify(coastalAmbiguityFlags),
+    extractionMetaJson: JSON.stringify(coastalExtractionMeta),
     createdAt: coastalShowDate,
   });
   ticketSalesToInsert.push({
@@ -1427,6 +1533,268 @@ async function main() {
     notes:
       "Disputed by WME (Daniel Hwang) on 3/18 over the $900 marketing recoup. Marcus authorized additional $720 to resolve, but the formal revision hasn't been pushed back into the system yet. Final agreed: $12,285 (vs originally calculated $11,565). See email thread for context. Going forward: deal emails must specify marketing recoup as inside or outside expense cap.",
   });
+
+  // -------- Decorate Modeler artifacts on three additional deals --------
+  //
+  // Coastal Spell (above) carries the historical resolved-flag demo. To
+  // exercise the rest of the Modeler surfaces — open flags, the share/confirm
+  // flow, the reports indicator — we pre-populate three more deals drawn
+  // from the random pool:
+  //
+  //  1. An UPCOMING vs/percentage_of_net deal with an OPEN marketing-recoup
+  //     ambiguity. Drives the "catch it before show week" pitch.
+  //  2. A PAST flat deal in CONFIRMED state. Clean happy path, both sides
+  //     have signed off on the Modeler artifact.
+  //  3. A PAST percentage_of_gross deal in SHARED state — venue has
+  //     confirmed and the agent hasn't yet. Drives the share-flow pitch.
+  {
+    const showById = new Map(showsToInsert.map((s) => [s.id, s] as const));
+    const daysFromToday = (dealId: string): number => {
+      const show = showById.get(dealId);
+      if (!show) return 0;
+      const showDate = new Date(show.date);
+      return Math.floor((showDate.getTime() - TODAY.getTime()) / 86400000);
+    };
+    const artistName = (artistId: string): string =>
+      ARTIST_DEFS.find((a) => a.id === artistId)?.name ?? "(unknown artist)";
+    const agentForArtist = (artistId: string) => {
+      const agentId = artistAgentMap.get(artistId);
+      return AGENT_DEFS.find((a) => a.id === agentId);
+    };
+
+    // 1) Upcoming vs deal with OPEN ambiguity flag.
+    const upcomingTarget = dealsToInsert.find((d) => {
+      const days = daysFromToday(d.showId);
+      return (
+        days >= 7 &&
+        days <= 50 &&
+        (d.dealType === "vs" || d.dealType === "percentage_of_net")
+      );
+    });
+    if (upcomingTarget) {
+      const show = showById.get(upcomingTarget.showId)!;
+      const artistN = artistName(show.artistId);
+      const agent = agentForArtist(show.artistId);
+      const agentN = agent?.name ?? "Agent";
+      const agentEmail = agent?.email ?? "agent@agency.com";
+      const guarantee = upcomingTarget.guaranteeAmount ?? 4500;
+      const pct = upcomingTarget.percentage ?? 0.8;
+      const cap = upcomingTarget.expenseCap ?? 2500;
+      const hosp = upcomingTarget.hospitalityCap ?? 500;
+      const recoupAmount = 750;
+
+      upcomingTarget.sourceEmailText = [
+        `From: ${agentN} <${agentEmail}>`,
+        `To: Mariana Reyes <mariana@thecrescentnashville.com>`,
+        `Subject: ${artistN} — The Crescent, ${show.date}`,
+        "",
+        "Mariana,",
+        "",
+        `Holding ${artistN} for ${show.date}. Terms below.`,
+        "",
+        `$${guarantee.toLocaleString()} vs ${Math.round(pct * 100)}% of net after expenses, whichever is greater.`,
+        `Expense cap $${cap.toLocaleString()}. Hospitality cap $${hosp}.`,
+        `Marketing recoup of $${recoupAmount} against gross, recoupable against the $${cap.toLocaleString()} cap.`,
+        `Bonus: 100% of every gross dollar above $30,000 (walkout pot).`,
+        "",
+        "Let me know if anything looks off and I'll get back to the artist's team.",
+        "",
+        agentN.split(" ")[0],
+      ].join("\n");
+
+      upcomingTarget.modelStatus = "draft";
+      upcomingTarget.recoupDeclarationsJson = JSON.stringify([
+        {
+          id: `rec_${upcomingTarget.id}_marketing`,
+          category: "marketing",
+          label: "Pre-show marketing spend",
+          capAmount: recoupAmount,
+          deductionBasis: "gross",
+          // Unresolved — that's the whole point of this demo deal.
+          deductionOrder: "inside_expense_cap",
+        },
+      ] as RecoupDeclaration[]);
+
+      // Replace the bonus structure with a walkout_pot to exercise the new
+      // Bonus variant in the schema. Preserves any other bonuses the random
+      // generator may have attached.
+      const existingBonuses: Bonus[] = upcomingTarget.bonusesJson
+        ? (JSON.parse(upcomingTarget.bonusesJson as string) as Bonus[])
+        : [];
+      const walkoutBonus: Bonus = {
+        type: "walkout_pot",
+        label: "100% of gross above $30,000",
+        threshold: 30000,
+        surplusRate: 1.0,
+      };
+      upcomingTarget.bonusesJson = JSON.stringify([
+        ...existingBonuses,
+        walkoutBonus,
+      ]);
+
+      upcomingTarget.ambiguityFlagsJson = JSON.stringify([
+        {
+          id: `amb_${upcomingTarget.id}_marketing_cap`,
+          sourceClause: `Marketing recoup of $${recoupAmount} against gross, recoupable against the $${cap.toLocaleString()} cap.`,
+          affectedFields: ["recoupDeclarations[0].deductionOrder"],
+          readings: [
+            {
+              label: "Inside the expense cap",
+              description:
+                "The marketing recoup is one of the items counting toward the expense cap. Total deductions cannot exceed the cap. Artist-favorable.",
+              configDelta: {
+                "recoupDeclarations[0].deductionOrder": "inside_expense_cap",
+              },
+            },
+            {
+              label: "Outside the expense cap",
+              description:
+                "The marketing recoup is taken on top of the expense cap. Both come off the gross. Venue-favorable.",
+              configDelta: {
+                "recoupDeclarations[0].deductionOrder": "outside_expense_cap",
+              },
+            },
+          ],
+          status: "open",
+          resolvedReading: null,
+          resolutionNote: null,
+          resolvedBy: null,
+          resolvedAt: null,
+        },
+      ] as AmbiguityFlag[]);
+
+      upcomingTarget.extractionMetaJson = JSON.stringify({
+        dealType: { confidence: 0.97, sourceSpan: `$${guarantee.toLocaleString()} vs ${Math.round(pct * 100)}% of net` },
+        guaranteeAmount: { confidence: 0.99, sourceSpan: `$${guarantee.toLocaleString()} vs` },
+        percentage: { confidence: 0.98, sourceSpan: `${Math.round(pct * 100)}% of net` },
+        percentageBasis: { confidence: 0.94, sourceSpan: `${Math.round(pct * 100)}% of net after expenses` },
+        expenseCap: { confidence: 0.99, sourceSpan: `Expense cap $${cap.toLocaleString()}` },
+        hospitalityCap: { confidence: 0.95, sourceSpan: `Hospitality cap $${hosp}` },
+        "bonuses[0]": { confidence: 0.91, sourceSpan: "100% of every gross dollar above $30,000" },
+        "recoupDeclarations[0].capAmount": { confidence: 0.99, sourceSpan: `Marketing recoup of $${recoupAmount}` },
+        "recoupDeclarations[0].deductionOrder": {
+          confidence: 0.42,
+          sourceSpan: `Marketing recoup of $${recoupAmount} against gross, recoupable against the $${cap.toLocaleString()} cap.`,
+        },
+      } as ExtractionMeta);
+    }
+
+    // 2) Past flat deal in CONFIRMED state.
+    const confirmedTarget = dealsToInsert.find((d) => {
+      const days = daysFromToday(d.showId);
+      return days <= -60 && d.dealType === "flat";
+    });
+    if (confirmedTarget) {
+      const show = showById.get(confirmedTarget.showId)!;
+      const artistN = artistName(show.artistId);
+      const agent = agentForArtist(show.artistId);
+      const agentN = agent?.name ?? "Agent";
+      const agentEmail = agent?.email ?? "agent@agency.com";
+      const guarantee = confirmedTarget.guaranteeAmount ?? 1500;
+      const hosp = confirmedTarget.hospitalityCap ?? 300;
+      const showDate = new Date(show.date);
+      const confirmedAt = new Date(showDate);
+      confirmedAt.setDate(confirmedAt.getDate() - 30);
+
+      confirmedTarget.sourceEmailText = [
+        `From: ${agentN} <${agentEmail}>`,
+        `To: Mariana Reyes <mariana@thecrescentnashville.com>`,
+        `Subject: ${artistN} — ${show.date}`,
+        "",
+        "Hey Mariana,",
+        "",
+        `Confirming ${artistN} for ${show.date} at The Crescent.`,
+        "",
+        `Deal: $${guarantee.toLocaleString()} flat guarantee. No bonuses, no percentages.`,
+        `Hospitality cap $${hosp} — usual rider, nothing crazy.`,
+        "75/25 merch split in artist's favor.",
+        "",
+        "Settlement same day or next morning if you can swing it.",
+        "",
+        "Thanks,",
+        agentN.split(" ")[0],
+      ].join("\n");
+
+      confirmedTarget.modelStatus = "confirmed";
+      confirmedTarget.shareToken = `tok_${confirmedTarget.id}`;
+      confirmedTarget.venueConfirmedAt = confirmedAt;
+      confirmedTarget.agentConfirmedAt = new Date(confirmedAt.getTime() + 86400000);
+      confirmedTarget.recoupDeclarationsJson = JSON.stringify([]);
+      confirmedTarget.ambiguityFlagsJson = JSON.stringify([]);
+      confirmedTarget.extractionMetaJson = JSON.stringify({
+        dealType: { confidence: 0.99, sourceSpan: `$${guarantee.toLocaleString()} flat guarantee` },
+        guaranteeAmount: { confidence: 0.99, sourceSpan: `$${guarantee.toLocaleString()} flat` },
+        hospitalityCap: { confidence: 0.95, sourceSpan: `Hospitality cap $${hosp}` },
+      } as ExtractionMeta);
+    }
+
+    // 3) Past percentage_of_gross deal in SHARED state (agent hasn't confirmed).
+    // Window kept wide because percentage_of_gross is only ~5% of the deal
+    // mix — narrowing further risks missing every candidate.
+    const sharedTarget = dealsToInsert.find((d) => {
+      const days = daysFromToday(d.showId);
+      return days <= -30 && d.dealType === "percentage_of_gross";
+    });
+    if (sharedTarget) {
+      const show = showById.get(sharedTarget.showId)!;
+      const artistN = artistName(show.artistId);
+      const agent = agentForArtist(show.artistId);
+      const agentN = agent?.name ?? "Agent";
+      const agentEmail = agent?.email ?? "agent@agency.com";
+      const guarantee = sharedTarget.guaranteeAmount ?? 6000;
+      const pct = sharedTarget.percentage ?? 0.85;
+      const cap = sharedTarget.expenseCap ?? 1200;
+      const hosp = sharedTarget.hospitalityCap ?? 400;
+      const showDate = new Date(show.date);
+      const sharedAt = new Date(showDate);
+      sharedAt.setDate(sharedAt.getDate() - 21);
+
+      sharedTarget.sourceEmailText = [
+        `From: ${agentN} <${agentEmail}>`,
+        `To: Mariana Reyes <mariana@thecrescentnashville.com>`,
+        `Subject: ${artistN}`,
+        "",
+        "Mariana,",
+        "",
+        `Locking in ${artistN} for ${show.date}. Deal terms below.`,
+        "",
+        `- ${Math.round(pct * 100)}% of gross box office.`,
+        `- $${guarantee.toLocaleString()} minimum guarantee.`,
+        `- Expense cap $${cap.toLocaleString()} (production + sound; hospitality separate).`,
+        `- Sellout bonus: +$1,500 at 100% paid attendance.`,
+        `- Standard hospitality (cap $${hosp}).`,
+        "",
+        "Strong night. They've been pulling 500-cap shows all tour.",
+        "",
+        "Best,",
+        agentN.split(" ")[0],
+      ].join("\n");
+
+      sharedTarget.modelStatus = "shared";
+      sharedTarget.shareToken = `tok_${sharedTarget.id}`;
+      sharedTarget.venueConfirmedAt = sharedAt;
+      sharedTarget.agentConfirmedAt = null;
+      sharedTarget.recoupDeclarationsJson = JSON.stringify([]);
+      sharedTarget.ambiguityFlagsJson = JSON.stringify([]);
+      sharedTarget.extractionMetaJson = JSON.stringify({
+        dealType: {
+          confidence: 0.97,
+          sourceSpan: `${Math.round(pct * 100)}% of gross box office`,
+        },
+        guaranteeAmount: { confidence: 0.99, sourceSpan: `$${guarantee.toLocaleString()} minimum guarantee` },
+        percentage: { confidence: 0.99, sourceSpan: `${Math.round(pct * 100)}% of gross` },
+        percentageBasis: { confidence: 0.97, sourceSpan: `${Math.round(pct * 100)}% of gross box office` },
+        expenseCap: { confidence: 0.96, sourceSpan: `Expense cap $${cap.toLocaleString()}` },
+        hospitalityCap: { confidence: 0.95, sourceSpan: `cap $${hosp}` },
+        "bonuses[0]": { confidence: 0.93, sourceSpan: "Sellout bonus: +$1,500 at 100% paid attendance" },
+      } as ExtractionMeta);
+    }
+
+    const decoratedCount = [upcomingTarget, confirmedTarget, sharedTarget].filter(Boolean).length;
+    console.log(
+      `   Modeler artifacts attached to Coastal Spell + ${decoratedCount} additional deal(s)`,
+    );
+  }
 
   // Bulk insert
   console.log(`   Inserting ${showsToInsert.length} shows…`);

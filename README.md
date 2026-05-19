@@ -48,6 +48,16 @@ npm install
 
 This pulls down all the JavaScript packages the project needs. Takes about 60 seconds. You may see a few warnings — those are normal and safe to ignore.
 
+### 3.5 Set your Anthropic API key (for the Deal Modeler)
+
+The Deal Modeler's email-intake step calls Claude to extract structured deal terms from a pasted email. Create a `.env.local` file in the project root:
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Get a key at [console.anthropic.com](https://console.anthropic.com/). The rest of the app runs fine without it — only the "Extract deal" button on `/shows` and the per-show Modeler tab require it.
+
 ### 4. Start the app
 
 ```bash

@@ -15,8 +15,25 @@ import {
   settlements,
   venues,
   type Recoup,
+  type RecoupDeclaration,
+  type AmbiguityFlag,
+  type ExtractionMeta,
+  type Bonus,
+  type Signoff,
 } from "@/db/schema";
-import { desc, asc, eq, sql, lte } from "drizzle-orm";
+import { desc, asc, eq, sql } from "drizzle-orm";
+
+// Tiny safe-parse helper used for the modeler's JSON columns. Returns the
+// fallback if the column is null or the JSON is malformed.
+function parseJson<T>(raw: string | null | undefined, fallback: T): T {
+  if (!raw) return fallback;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed as T;
+  } catch {
+    return fallback;
+  }
+}
 
 function todayDateString(): string {
   const d = new Date();
@@ -38,7 +55,6 @@ export async function getAllShows() {
     .leftJoin(agents, eq(artists.agentId, agents.id))
     .leftJoin(deals, eq(deals.showId, shows.id))
     .leftJoin(settlements, eq(settlements.showId, shows.id))
-    .where(lte(shows.date, todayDateString()))
     .orderBy(asc(shows.date));
 }
 
@@ -89,13 +105,111 @@ export async function getShowById(id: string) {
     }
   }
 
+  const recoupDeclarations = parseJson<RecoupDeclaration[]>(
+    row.deal?.recoupDeclarationsJson,
+    [],
+  );
+  const ambiguityFlags = parseJson<AmbiguityFlag[]>(
+    row.deal?.ambiguityFlagsJson,
+    [],
+  );
+  const extractionMeta = parseJson<ExtractionMeta>(
+    row.deal?.extractionMetaJson,
+    {},
+  );
+  const bonuses = parseJson<Bonus[]>(row.deal?.bonusesJson, []);
+  const signoffs = parseJson<Signoff[]>(row.deal?.signoffsJson, []);
+
   return {
     ...row,
     ticketSales: showTicketSales,
     expenses: showExpenses,
     comps: showComps,
     recoups,
+    recoupDeclarations,
+    ambiguityFlags,
+    extractionMeta,
+    bonuses,
+    signoffs,
   };
+}
+
+/**
+ * Look up a deal (with its show + artist + agent) by its share_token.
+ * Used by the public read-only view at /shared/[token]. Returns null if
+ * the token is unknown.
+ */
+export async function getDealByShareToken(token: string) {
+  const rows = await db
+    .select({
+      deal: deals,
+      show: shows,
+      artist: artists,
+      agent: agents,
+      agency: agencies,
+      venue: venues,
+    })
+    .from(deals)
+    .leftJoin(shows, eq(deals.showId, shows.id))
+    .leftJoin(artists, eq(shows.artistId, artists.id))
+    .leftJoin(agents, eq(artists.agentId, agents.id))
+    .leftJoin(agencies, eq(agents.agencyId, agencies.id))
+    .leftJoin(venues, eq(shows.venueId, venues.id))
+    .where(eq(deals.shareToken, token));
+
+  if (rows.length === 0) return null;
+  const row = rows[0];
+
+  return {
+    ...row,
+    recoupDeclarations: parseJson<RecoupDeclaration[]>(
+      row.deal.recoupDeclarationsJson,
+      [],
+    ),
+    ambiguityFlags: parseJson<AmbiguityFlag[]>(
+      row.deal.ambiguityFlagsJson,
+      [],
+    ),
+    extractionMeta: parseJson<ExtractionMeta>(
+      row.deal.extractionMetaJson,
+      {},
+    ),
+    bonuses: parseJson<Bonus[]>(row.deal.bonusesJson, []),
+    signoffs: parseJson<Signoff[]>(row.deal.signoffsJson, []),
+  };
+}
+
+export type SharedDealView = NonNullable<
+  Awaited<ReturnType<typeof getDealByShareToken>>
+>;
+
+/**
+ * Shows whose deal has at least one open ambiguity flag. Used by the
+ * shows-list indicator and the reports "unresolved questions" metric.
+ * Returns lightweight rows — caller can drill into each show as needed.
+ */
+export async function getShowsWithOpenAmbiguity() {
+  const rows = await db
+    .select({
+      show: shows,
+      artist: artists,
+      deal: deals,
+    })
+    .from(deals)
+    .innerJoin(shows, eq(deals.showId, shows.id))
+    .leftJoin(artists, eq(shows.artistId, artists.id))
+    .where(sql`${deals.ambiguityFlagsJson} IS NOT NULL`)
+    .orderBy(asc(shows.date));
+
+  return rows
+    .map((row) => ({
+      ...row,
+      ambiguityFlags: parseJson<AmbiguityFlag[]>(
+        row.deal.ambiguityFlagsJson,
+        [],
+      ),
+    }))
+    .filter((row) => row.ambiguityFlags.some((f) => f.status === "open"));
 }
 
 export type ShowWithRelations = NonNullable<

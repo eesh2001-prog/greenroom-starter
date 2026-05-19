@@ -2,8 +2,9 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import { ArrowUpRight, Search, Calendar } from "lucide-react";
+import { ArrowUpRight, Loader2, Search, Calendar, Trash2 } from "lucide-react";
 import { DealTypeBadge, PlainBadge } from "@/components/ui/badge";
+import { deleteShow } from "@/app/actions/deleteShow";
 
 type Status = "booked" | "advanced" | "day_of" | "settled" | "closed";
 
@@ -53,19 +54,36 @@ function groupByMonth(rows: ShowRow[]): { month: string; rows: ShowRow[] }[] {
   return Array.from(groups.entries()).map(([month, rows]) => ({ month, rows }));
 }
 
-export function ShowsList({ rows }: { rows: ShowRow[] }) {
+export function ShowsList({ rows: initialRows }: { rows: ShowRow[] }) {
   const [query, setQuery] = useState("");
+  const [localRows, setLocalRows] = useState(initialRows);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function handleConfirmDelete(showId: string) {
+    setLoadingId(showId);
+    setDeleteError(null);
+    const result = await deleteShow(showId);
+    if (result.ok) {
+      setLocalRows((prev) => prev.filter((r) => r.show.id !== showId));
+      setConfirmingId(null);
+    } else {
+      setDeleteError(result.error);
+    }
+    setLoadingId(null);
+  }
 
   const filtered = useMemo(() => {
-    if (!query.trim()) return rows;
+    if (!query.trim()) return localRows;
     const q = query.toLowerCase();
-    return rows.filter(
+    return localRows.filter(
       (r) =>
         r.artist?.name.toLowerCase().includes(q) ||
         r.deal?.dealType.toLowerCase().includes(q) ||
         r.dateFormatted.toLowerCase().includes(q),
     );
-  }, [rows, query]);
+  }, [localRows, query]);
 
   const months = useMemo(() => groupByMonth(filtered), [filtered]);
 
@@ -85,14 +103,18 @@ export function ShowsList({ rows }: { rows: ShowRow[] }) {
         </div>
       </div>
 
+      {deleteError && (
+        <div className="mb-4 text-[12px] text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-3 py-2">
+          {deleteError}
+        </div>
+      )}
+
       {/* Results */}
       {filtered.length === 0 ? (
         <div className="py-20 text-center">
           <Calendar className="h-8 w-8 text-ink-200 mx-auto mb-3" />
           <div className="text-[14px] text-ink-500">
-            {query
-              ? `No shows matching "${query}"`
-              : "No shows yet."}
+            {query ? `No shows matching "${query}"` : "No shows yet."}
           </div>
           {query && (
             <button
@@ -118,7 +140,18 @@ export function ShowsList({ rows }: { rows: ShowRow[] }) {
               <div className="border-t border-ink-200/50">
                 <ul>
                   {rows.map((row) => (
-                    <ShowListRow key={row.show.id} row={row} />
+                    <ShowListRow
+                      key={row.show.id}
+                      row={row}
+                      isConfirming={confirmingId === row.show.id}
+                      isLoading={loadingId === row.show.id}
+                      onDeleteClick={() => {
+                        setConfirmingId(row.show.id);
+                        setDeleteError(null);
+                      }}
+                      onConfirmDelete={() => handleConfirmDelete(row.show.id)}
+                      onCancelDelete={() => setConfirmingId(null)}
+                    />
                   ))}
                 </ul>
               </div>
@@ -130,7 +163,7 @@ export function ShowsList({ rows }: { rows: ShowRow[] }) {
       {query && filtered.length > 0 && (
         <div className="mt-4 text-center">
           <span className="text-[12px] text-ink-400">
-            {filtered.length} of {rows.length} shows
+            {filtered.length} of {localRows.length} shows
           </span>
         </div>
       )}
@@ -138,9 +171,64 @@ export function ShowsList({ rows }: { rows: ShowRow[] }) {
   );
 }
 
-function ShowListRow({ row }: { row: ShowRow }) {
+function ShowListRow({
+  row,
+  isConfirming,
+  isLoading,
+  onDeleteClick,
+  onConfirmDelete,
+  onCancelDelete,
+}: {
+  row: ShowRow;
+  isConfirming: boolean;
+  isLoading: boolean;
+  onDeleteClick: () => void;
+  onConfirmDelete: () => void;
+  onCancelDelete: () => void;
+}) {
   const { show, artist, deal, settlement } = row;
   const accent = getAccentColor(row);
+
+  if (isConfirming) {
+    return (
+      <li className="relative list-none">
+        <div
+          className={`absolute left-0 top-2 bottom-2 w-[3px] rounded-full bg-rose-400`}
+        />
+        <div className="flex items-center justify-between pl-5 pr-3 py-3 bg-rose-50/60 rounded-lg border border-rose-200/60">
+          <div>
+            <span className="text-[13px] font-medium text-rose-900">
+              Delete {artist?.name ?? "this show"}?
+            </span>
+            <span className="text-[12px] text-rose-600 ml-2">
+              This removes the show, deal, and all associated data.
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 ml-4">
+            <button
+              onClick={onCancelDelete}
+              disabled={isLoading}
+              className="text-[12.5px] text-ink-600 hover:text-ink-900 px-3 py-1.5 rounded-md hover:bg-white transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={onConfirmDelete}
+              disabled={isLoading}
+              className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-white bg-rose-600 hover:bg-rose-700 px-3 py-1.5 rounded-md transition-colors disabled:opacity-50"
+            >
+              {isLoading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
+              Delete
+            </button>
+          </div>
+        </div>
+      </li>
+    );
+  }
 
   return (
     <li className="relative group list-none">
@@ -155,9 +243,7 @@ function ShowListRow({ row }: { row: ShowRow }) {
           <div className="text-[12.5px] font-medium text-ink-800 tabular">
             {row.dateFormatted}
           </div>
-          <div className="text-[10px] text-ink-400 mt-px">
-            {row.dateRelative}
-          </div>
+          <div className="text-[10px] text-ink-400 mt-px">{row.dateRelative}</div>
         </div>
 
         <div className="min-w-0">
@@ -189,13 +275,20 @@ function ShowListRow({ row }: { row: ShowRow }) {
         </div>
 
         <div className="flex justify-end">
-          {settlement ? (
-            <SettlementPill status={settlement.status} />
-          ) : null}
+          {settlement ? <SettlementPill status={settlement.status} /> : null}
         </div>
 
         <ArrowUpRight className="h-3.5 w-3.5 text-ink-200 group-hover:text-ink-500 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 transition-all duration-150" />
       </Link>
+
+      {/* Trash button — outside the Link, shown on row hover */}
+      <button
+        onClick={onDeleteClick}
+        title="Delete show"
+        className="absolute right-8 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1.5 rounded-md text-ink-300 hover:text-rose-600 hover:bg-rose-50 transition-all duration-150 z-10"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </button>
     </li>
   );
 }

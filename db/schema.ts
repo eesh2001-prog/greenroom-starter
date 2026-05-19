@@ -125,6 +125,28 @@ export const deals = sqliteTable("deals", {
   bonusesJson: text("bonuses_json"),
   dealNotesFreetext: text("deal_notes_freetext"),
 
+  // -------- Deal Modeler fields (added for the structured-deal feature) --------
+  //
+  // sourceEmailText is the canonical raw email Mariana brought into the
+  // Modeler. It is NEVER overwritten by extraction — extraction populates
+  // the structured columns, the raw text stays alongside.
+  //
+  // recoupDeclarationsJson / ambiguityFlagsJson / extractionMetaJson follow
+  // the same plain-text-JSON pattern as bonusesJson and recoupsJson — they
+  // get parsed manually in queries. See type aliases at the bottom of the
+  // file for their decoded shapes.
+  sourceEmailText: text("source_email_text"),
+  modelStatus: text("model_status", {
+    enum: ["draft", "shared", "confirmed"],
+  }).default("draft"),
+  shareToken: text("share_token").unique(),
+  agentConfirmedAt: integer("agent_confirmed_at", { mode: "timestamp" }),
+  venueConfirmedAt: integer("venue_confirmed_at", { mode: "timestamp" }),
+  recoupDeclarationsJson: text("recoup_declarations_json"),
+  ambiguityFlagsJson: text("ambiguity_flags_json"),
+  extractionMetaJson: text("extraction_meta_json"),
+  signoffsJson: text("signoffs_json"),
+
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });
 
@@ -316,6 +338,14 @@ export type Bonus =
       type: "tier_ratchet";
       label: string;
       tiers: { from: number; to: number | null; percentage: number }[];
+    }
+  // Formula-based walkout pot: artist takes `surplusRate` of every gross
+  // dollar above `threshold`. surplusRate = 1.0 means 100% of overage.
+  | {
+      type: "walkout_pot";
+      label: string;
+      threshold: number;
+      surplusRate: number;
     };
 
 export type Recoup = {
@@ -333,3 +363,81 @@ export type Recoup = {
 };
 
 export type SettlementStage = Settlement["status"];
+
+// -------- Deal Modeler decoded JSON helpers --------
+
+/**
+ * A recoup the venue expects to take, declared at deal-time (pre-show).
+ * Distinct from the post-show Recoup type on settlements: this one carries
+ * `deductionOrder`, which is the field the Coastal Spell dispute turned on.
+ */
+export type RecoupDeclaration = {
+  id: string;
+  category:
+    | "marketing"
+    | "hospitality_overage"
+    | "production_overage"
+    | "prior_advance"
+    | "damages"
+    | "other";
+  label: string;
+  capAmount: number; // max expected, e.g. 900
+  deductionBasis: "gross" | "net";
+  // Where in the math the recoup sits — the single most important new field.
+  // - inside_expense_cap: counts toward the deal's expense cap (artist-favorable)
+  // - outside_expense_cap: deducted on top of the expense cap (venue-favorable)
+  // - before_split: deducted from gross before the percentage split
+  // - after_split: deducted from the artist's share post-split
+  deductionOrder:
+    | "inside_expense_cap"
+    | "outside_expense_cap"
+    | "before_split"
+    | "after_split";
+};
+
+/**
+ * A clause from the deal email that admits more than one valid structured
+ * reading. Each reading carries a `configDelta` — the structured-deal
+ * change that reading implies — so simulation can run both.
+ */
+export type AmbiguityFlag = {
+  id: string;
+  sourceClause: string; // exact phrase from the email
+  // dotted/bracketed paths into the structured deal that this flag affects,
+  // e.g. "recoupDeclarations[0].deductionOrder"
+  affectedFields: string[];
+  readings: {
+    label: string;
+    description: string;
+    configDelta: Record<string, unknown>;
+  }[];
+  status: "open" | "resolved";
+  resolvedReading: string | null;
+  resolutionNote: string | null;
+  resolvedBy: string | null;
+  resolvedAt: number | null; // unix ms
+};
+
+/**
+ * Per-field extraction provenance: how confident the extractor was, and the
+ * exact phrase in the source email it pulled the value from. Keyed by the
+ * structured-deal field name (e.g. "guaranteeAmount", "percentage",
+ * "recoupDeclarations[0].capAmount").
+ */
+export type ExtractionMeta = Record<
+  string,
+  { confidence: number; sourceSpan: string }
+>;
+
+/**
+ * One entry per stakeholder who has signed off on the deal.
+ * Mandatory: booker (Mariana) + agent. Non-mandatory: tour_manager, gm (Marcus).
+ * Stored as signoffsJson on the deals table.
+ */
+export type Signoff = {
+  role: "booker" | "agent" | "tour_manager" | "gm";
+  name: string;
+  email: string;
+  mandatory: boolean;
+  signedAt: number; // unix ms
+};

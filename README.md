@@ -50,27 +50,55 @@ This pulls down all the JavaScript packages the project needs. Takes about 60 se
 
 ### 4. Add your Anthropic API key
 
-**This step is required to use the Deal Modeler.** The Deal Modeler calls Claude to extract structured deal terms from a pasted email — without a key, hitting "Extract deal" on `/shows` will fail with an error.
+**This step is required to use the Deal Modeler.** Skip it and the rest of the app still works — but hitting "Extract deal" on `/shows` will fail with an error.
 
-Create a file called **`.env.local`** in the project root (next to `package.json`):
+**Step-by-step:**
+
+**1. Copy the example env file**
+
+A template is included in the repo. Copy it to create your own local env file:
+
+```bash
+# Mac / Linux / Git Bash
+cp .env.local.example .env.local
+
+# Windows PowerShell
+Copy-Item .env.local.example .env.local
+```
+
+**2. Get an Anthropic API key**
+
+1. Go to [console.anthropic.com](https://console.anthropic.com/) and sign in (or create a free account — it's free to start).
+2. Click **API Keys** in the left sidebar.
+3. Click **Create Key**, give it any name, and copy the value. It starts with `sk-ant-`.
+
+**3. Paste the key into `.env.local`**
+
+Open `.env.local` in your editor. It looks like this:
+
+```
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
+```
+
+Replace `your_anthropic_api_key_here` with the key you just copied:
 
 ```
 ANTHROPIC_API_KEY=sk-ant-api03-...
 ```
 
-**Where to get a key:**
-1. Go to [console.anthropic.com](https://console.anthropic.com/) and sign in (or create a free account).
-2. Navigate to **API Keys** in the left sidebar.
-3. Click **Create Key**, give it a name, and copy the value — it starts with `sk-ant-`.
-4. Paste it into `.env.local` as shown above.
+Save the file. That's it.
 
-**Important:** `.env.local` is listed in `.gitignore` and will never be committed to GitHub. Do not paste your key anywhere else in the codebase.
+> **`.env.local` is in `.gitignore` and will never be committed.** Your key stays on your machine only. Never paste it anywhere else in the codebase.
 
-After creating the file, start (or restart) the dev server — Next.js only reads `.env.local` at startup.
+**4. Start (or restart) the dev server**
 
-The rest of the app (shows list, settlement, reports, artists) runs without the key. Only these two surfaces require it:
-- The **"Extract deal"** button on `/shows`
-- The **Model** tab on any show detail page (`/shows/[id]/model`)
+Next.js only reads `.env.local` at startup. If the server is already running, stop it (`Ctrl+C`) and run `npm run dev` again.
+
+**What requires the key:**
+- The **"Extract deal"** intake card on `/shows` — paste a deal email, Claude extracts the terms
+- The **Model** tab on any show (`/shows/[id]/model`) — the extraction review, ambiguity flags, and simulator
+
+Everything else (shows list, settlement worksheet, reports, artists) runs without it.
 
 ### 5. Start the app
 
